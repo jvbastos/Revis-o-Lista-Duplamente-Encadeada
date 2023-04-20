@@ -1,0 +1,130 @@
+#include <iostream>
+#include <chrono>
+
+template <typename T>
+class Node {
+public:
+    Node(const T& data, Node<T>* prev = nullptr, Node<T>* next = nullptr)
+        : data(data), prev(prev), next(next) {}
+
+    T data;
+    Node<T>* prev;
+    Node<T>* next;
+};
+
+template <typename T>
+class CachedLDE {
+public:
+    CachedLDE(int ttl) : head_(nullptr), tail_(nullptr), size_(0), ttl_(ttl) {}
+
+    ~CachedLDE() {
+        clear();
+    }
+
+    void pushFront(const T& data) {
+        auto node = new Node<T>(data, nullptr, head_);
+        if (head_) {
+            head_->prev = node;
+        }
+        head_ = node;
+        if (!tail_) {
+            tail_ = node;
+        }
+        cache_.emplace_back(node, std::chrono::system_clock::now());
+        cleanExpired();
+    }
+
+    void pushBack(const T& data) {
+        auto node = new Node<T>(data, tail_, nullptr);
+        if (tail_) {
+            tail_->next = node;
+        }
+        tail_ = node;
+        if (!head_) {
+            head_ = node;
+        }
+        cache_.emplace_back(node, std::chrono::system_clock::now());
+        cleanExpired();
+    }
+
+    void popFront() {
+        if (!head_) {
+            return;
+        }
+        auto node = head_;
+        head_ = node->next;
+        if (head_) {
+            head_->prev = nullptr;
+        } else {
+            tail_ = nullptr;
+        }
+        delete node;
+        size_--;
+        cleanExpired();
+    }
+
+    void popBack() {
+        if (!tail_) {
+            return;
+        }
+        auto node = tail_;
+        tail_ = node->prev;
+        if (tail_) {
+            tail_->next = nullptr;
+        } else {
+            head_ = nullptr;
+        }
+        delete node;
+        size_--;
+        cleanExpired();
+    }
+
+    void clear() {
+        auto node = head_;
+        while (node) {
+            auto next = node->next;
+            delete node;
+            node = next;
+        }
+        head_ = nullptr;
+        tail_ = nullptr;
+        size_ = 0;
+        cache_.clear();
+    }
+
+    void print() {
+        cleanExpired();
+        for (auto node = head_; node; node = node->next) {
+            std::cout << node->data << " ";
+        }
+        std::cout << std::endl;
+    }
+
+private:
+    struct CacheItem {
+        Node<T>* node;
+        std::chrono::system_clock::time_point timestamp;
+
+        CacheItem(Node<T>* node, const std::chrono::system_clock::time_point& timestamp)
+            : node(node), timestamp(timestamp) {}
+    };
+
+    void cleanExpired() {
+        auto now = std::chrono::system_clock::now();
+        while (!cache_.empty() && std::chrono::duration_cast<std::chrono::seconds>(now - cache_.front().timestamp).count() >= ttl_) {
+            auto node = cache_.front().node;
+            if (node->prev) {
+                node->prev->next = node->next;
+            } else {
+                head_ = node->next;
+            }
+            if (node->next) {
+                node->next->prev = node->prev;
+            } else {
+                tail_ = node->prev;
+            }
+            delete node;
+            size_--;
+            cache_.pop_front();
+        }
+   
